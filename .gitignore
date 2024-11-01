@@ -1,0 +1,4 @@
+input/*
+output/*
+scratch
+__pycache__
