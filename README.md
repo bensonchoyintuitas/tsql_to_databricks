@@ -11,8 +11,8 @@ Converts TSQL dbt or sql models to ANSI SQL in style of databricks
 python3 convert_tsql_to_databricks.py input.sql output.sql
 ```
 ```bash
-# For a whole folder and subfolders (place models into the input folder)
-python3 python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
+# For a whole folder and subfolders (place models into the input 
+python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
 ```
 
 # Areas for improvement:
