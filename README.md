@@ -4,7 +4,7 @@ Converts TSQL dbt or sql models to ANSI SQL in style of databricks.
 
 # Written by:
 - [@benson-choy](https://github.com/bensonchoyintuitas/tsql_to_databricks)
-- Master branch is protected. Create a branch and pull request to merge into master.
+- Master branch is protected. Create a branch and pull request to merge into master...
 
 # To run:
 
