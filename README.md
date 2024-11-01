@@ -2,7 +2,7 @@
 Converts TSQL dbt or sql models to ANSI SQL in style of databricks
 
 # Written by:
-- [@benson-choy](https://dev.azure.com/intuitas/Intuitas%20Blueprint/_git/convert_tsql)
+- [@benson-choy](https://github.com/bensonchoyintuitas/tsql_to_databricks)
 
 # To run:
 
