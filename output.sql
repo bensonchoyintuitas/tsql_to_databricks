@@ -1,12 +1,11 @@
--- Converted on: 2024-10-31 22:51:43
+-- Converted on: 2024-11-04 21:41:20
 -- Command: python convert_tsql_to_databricks.py input.sql output.sql
 
 {{
     config(
-        file_format='delta',
-        unique_key='ENCNTR_ID',
-        alias='FIRSTNET_ED_LIST',
-        materialized='table'
+        unique_key='ENCNTR_ID'
+        ,alias='FIRSTNET_ED_LIST'
+        ,materialized='table'
     )
 }}
 

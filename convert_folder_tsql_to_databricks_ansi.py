@@ -3,6 +3,7 @@ import shutil
 import sys
 from datetime import datetime
 from convert_tsql_to_databricks import convert_tsql_to_databricks
+from lowercase_all import lowercase_sql_files
 
 def process_sql_file(input_path, output_path):
     """Process a single SQL file with proper error handling"""
@@ -49,3 +50,11 @@ if __name__ == '__main__':
         shutil.rmtree(output_directory)
 
     process_directory(input_directory, output_directory)
+    
+    # Ask about lowercase conversion
+    print("\nConversion complete!")
+    response = input("Would you like to convert all SQL files to lowercase? (y/n): ").lower().strip()
+    if response == 'y':
+        lowercase_sql_files(output_directory)
+    else:
+        print("Skipping lowercase conversion.")

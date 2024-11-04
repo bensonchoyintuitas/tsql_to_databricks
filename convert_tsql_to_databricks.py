@@ -53,9 +53,6 @@ def update_dbt_config(header_match):
         else:
             params.append(f"        {key}='{value}'")
     
-    # Always add file_format='delta' first
-    params.insert(0, "        file_format='delta'")
-    
     # Join with comma at start of new line
     joined_params = "\n".join(params)
     if len(params) > 1:  # Only add commas if there's more than one parameter
