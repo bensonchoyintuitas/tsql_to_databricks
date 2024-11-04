@@ -65,39 +65,58 @@ def update_dbt_config(header_match):
 
 
 def convert_data_types(sql):
-    # Handle nested CONVERT statements first
-    nested_convert_pattern = r'CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)'
-    sql = re.sub(nested_convert_pattern, 
-                r'cast(coalesce(cast(\1 as string),\'\2\') as string)', 
-                sql, 
-                flags=re.IGNORECASE)
-
-    # Then handle other conversions
-    conversions = [
-        # Convert simple CONVERT VARCHAR/NVARCHAR to CAST STRING
-        (r'CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', 
-         r'cast(\1 as string)', 
+    # Handle CONVERT statements from most specific to most generic
+    patterns = [
+        # Pattern 1: CONVERT with multiple COALESCE concatenations
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\+\s*\'\|\'\s*\+\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast(coalesce(cast({m.group(1)} as string), '{m.group(2)}') || '|' || coalesce(cast({m.group(3)} as string), '{m.group(4)}') as string)",
          re.IGNORECASE),
         
-        # Convert data type declarations
-        (r'\bVARCHAR\s*\(\s*\d+\s*\)', 'STRING', re.IGNORECASE),
-        (r'\bNVARCHAR\s*\(\s*(?:MAX|\d+)\s*\)', 'STRING', re.IGNORECASE),
+        # Pattern 2: CONVERT with string concatenation and COALESCE
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*\'([^\']+)\'\s*\+\s*\'\|\'\s*\+\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast('{m.group(1)}' || '|' || coalesce(cast({m.group(2)} as string), '{m.group(3)}') as string)",
+         re.IGNORECASE),
         
-        # Convert DATETIME/DATETIME2 to TIMESTAMP
-        (r'CONVERT\s*\(\s*DATETIME2\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', r'CAST(\1 AS TIMESTAMP)', re.IGNORECASE),
+        # Pattern 3: Simple CONVERT with nested COALESCE
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast(coalesce(cast({m.group(1)} as string), '{m.group(2)}') as string)",
+         re.IGNORECASE),
         
-        # Convert BIT to BOOLEAN
-        (r'CONVERT\s*\(\s*BIT\s*,\s*([^,)]+)\)', r'CAST(\1 AS BOOLEAN)', re.IGNORECASE),
+        # Pattern 4: CONVERT binary
+        (r'convert\s*\(\s*binary\s*\(\s*(\d+)\s*\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(2)} as binary({m.group(1)}))",
+         re.IGNORECASE),
         
-        # Convert BINARY
-        (r'CONVERT\s*\(\s*BINARY\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', r'CAST(\1 AS BINARY)', re.IGNORECASE),
+        # Pattern 5: CONVERT datetime2
+        (r'convert\s*\(\s*datetime2\s*\(\s*\d+\s*\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(1)} as timestamp)",
+         re.IGNORECASE),
         
-        # Convert TINYINT to INT
-        (r'\bTINYINT\b', 'INT', re.IGNORECASE)
+        # Pattern 6: CAST as BIT
+        (r'cast\s*\(\s*(\d+)\s*as\s*bit\s*\)',
+         lambda m: f"cast({m.group(1)} as boolean)",
+         re.IGNORECASE),
+        
+        # Pattern 7: Generic CONVERT (catch-all)
+        (r'CONVERT\s*\(\s*(?:N?VARCHAR)\s*\([^)]+\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(1)} as string)",
+         re.IGNORECASE),
     ]
     
-    for pattern, replacement, flags in conversions:
+    # Apply all patterns in order
+    for pattern, replacement, flags in patterns:
         sql = re.sub(pattern, replacement, sql, flags=flags)
+    
+    # Handle type declarations last
+    type_conversions = [
+        # VARCHAR/NVARCHAR to string
+        (r'(?:n?varchar)\s*\(\s*(?:max|\d+)\s*\)', 'string'),
+        # TINYINT to INT
+        (r'\btinyint\b', 'int')
+    ]
+    
+    for pattern, replacement in type_conversions:
+        sql = re.sub(pattern, replacement, sql, flags=re.IGNORECASE)
     
     return sql
 
