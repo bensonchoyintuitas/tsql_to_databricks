@@ -29,8 +29,9 @@ python lowercase_all.py custom_directory  # uses specified directory
 
 # Known Gaps:
 1. DATEDIFF(second,`Departure_Actual_At`,`AdmissionDate`) may require manual handling as DATABRICKS DATEDIFF defaults to minutes and not seconds. Automation of this resol
+2. Complex "AS" aliasing places the alias in the wrong spot sometimes.
 
-2. AS PRESENT_AGE placed in the wrong position:
+e.g AS PRESENT_AGE placed in the wrong position:
 ```sql
      -- Input:
 
@@ -54,7 +55,7 @@ python lowercase_all.py custom_directory  # uses specified directory
                                                                  ELSE E.QUICK_REGISTRATION_AEST
                                                             END, current_timestamp()) AS PRESENT_AGE) / 365.25)
 ```
-3. SEX_CODE placed in the wrong position:
+e.g. SEX_CODE placed in the wrong position:
 
 ```sql
      -- Input:
@@ -73,5 +74,8 @@ python lowercase_all.py custom_directory  # uses specified directory
                                    WHEN LEFT(E.`PRESENT_GENDER`,1) = 'I' THEN 3
                                    ELSE 9
                               END
-     ```
-4. Challenges with complex nested CONVERT and CAST        , cast(coalesce(cast(`facility_code_conformed` as string),\'-1\') as string) as `bk_facility`
+```
+e.g. Challenges with complex nested CONVERT and CAST  
+```sql
+cast(coalesce(cast(`facility_code_conformed` as string),\'-1\') as string) as `bk_facility`
+```
