@@ -65,27 +65,52 @@ def update_dbt_config(header_match):
 
 
 def convert_data_types(sql):
-    # Convert CONVERT to CAST and standardize data types
+    # Handle nested CONVERT statements first
+    nested_convert_pattern = r'CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)'
+    sql = re.sub(nested_convert_pattern, 
+                r'cast(coalesce(cast(\1 as string),\'\2\') as string)', 
+                sql, 
+                flags=re.IGNORECASE)
+
+    # Then handle other conversions
     conversions = [
-        # Convert VARCHAR/NVARCHAR to STRING
-        (r'CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', r'CAST(\1 AS STRING)', re.IGNORECASE),
-        (r'CONVERT\s*\(\s*STRING\s*,\s*([^,)]+)\)', r'CAST(\1 AS STRING)', re.IGNORECASE),
+        # Convert simple CONVERT VARCHAR/NVARCHAR to CAST STRING
+        (r'CONVERT\s*\(\s*(?:VARCHAR|NVARCHAR)\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', 
+         r'cast(\1 as string)', 
+         re.IGNORECASE),
         
         # Convert DATETIME/DATETIME2 to TIMESTAMP
-        (r'CONVERT\s*\(\s*DATETIME2\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', r'CAST(\1 AS TIMESTAMP)', re.IGNORECASE),
+        (r'CONVERT\s*\(\s*DATETIME2\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', 
+         r'cast(\1 as timestamp)', 
+         re.IGNORECASE),
         
         # Convert BIT to BOOLEAN
-        (r'CONVERT\s*\(\s*BIT\s*,\s*([^,)]+)\)', r'CAST(\1 AS BOOLEAN)', re.IGNORECASE),
+        (r'CONVERT\s*\(\s*BIT\s*,\s*([^,)]+)\)', 
+         r'cast(\1 as boolean)', 
+         re.IGNORECASE),
         
         # Convert BINARY
-        (r'CONVERT\s*\(\s*BINARY\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', r'CAST(\1 AS BINARY)', re.IGNORECASE),
+        (r'CONVERT\s*\(\s*BINARY\s*\(\s*\d+\s*\)\s*,\s*([^,)]+)\)', 
+         r'cast(\1 as binary)', 
+         re.IGNORECASE),
         
         # Data type declarations
         (r'\bVARCHAR\s*\(\s*\d+\s*\)', 'STRING', re.IGNORECASE),
         (r'\bNVARCHAR\s*\(\s*(?:MAX|\d+)\s*\)', 'STRING', re.IGNORECASE),
         (r'\bDATETIME2\s*\(\s*\d+\s*\)', 'TIMESTAMP', re.IGNORECASE),
         (r'\bBIT\b', 'BOOLEAN', re.IGNORECASE),
-        (r'\bTINYINT\b', 'INT', re.IGNORECASE)
+        (r'\bTINYINT\b', 'INT', re.IGNORECASE),
+        
+        # Convert any remaining CONVERT functions to CAST
+        (r'CONVERT\s*\(\s*(\w+)\s*,\s*([^,)]+)\)', 
+         r'cast(\2 as \1)', 
+         re.IGNORECASE),
+        
+        # Standardize data type names
+        (r'\bVARCHAR\b', 'STRING', re.IGNORECASE),
+        (r'\bNVARCHAR\b', 'STRING', re.IGNORECASE),
+        (r'\bDATETIME2?\b', 'TIMESTAMP', re.IGNORECASE),
+        (r'\bNUMERIC\b', 'DECIMAL', re.IGNORECASE)
     ]
     
     for pattern, replacement, flags in conversions:
