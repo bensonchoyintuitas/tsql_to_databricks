@@ -53,9 +53,6 @@ def update_dbt_config(header_match):
         else:
             params.append(f"        {key}='{value}'")
     
-    # Always add file_format='delta' first
-    params.insert(0, "        file_format='delta'")
-    
     # Join with comma at start of new line
     joined_params = "\n".join(params)
     if len(params) > 1:  # Only add commas if there's more than one parameter
@@ -68,16 +65,59 @@ def update_dbt_config(header_match):
 
 
 def convert_data_types(sql):
-    # Replace NVARCHAR with STRING
-    sql = re.sub(r'NVARCHAR\s*\(\s*MAX\s*\)', 'STRING', sql, flags=re.IGNORECASE)
-    sql = re.sub(r'NVARCHAR\s*\(\s*\d+\s*\)', 'STRING', sql, flags=re.IGNORECASE)
-    # Replace TINYINT with INT
-    sql = re.sub(r'TINYINT', 'INT', sql, flags=re.IGNORECASE)
-    # Replace DATETIME2 with TIMESTAMP
-    sql = re.sub(r'DATETIME2', 'TIMESTAMP', sql, flags=re.IGNORECASE)
-    # Replace CONVERT with CAST and handle optional style argument
-    sql = re.sub(r'CONVERT\s*\(\s*NVARCHAR\s*,\s*("?[^\s,"]+?"?)\s*,\s*(\d+)\s*\)', r"CAST(\1 AS STRING)", sql, flags=re.IGNORECASE)
-    sql = re.sub(r'CONVERT\s*\(\s*NVARCHAR\s*,\s*("?[^\s,"]+?"?)\s*\)', r"CAST(\1 AS STRING)", sql, flags=re.IGNORECASE)
+    # Handle CONVERT statements from most specific to most generic
+    patterns = [
+        # Pattern 1: CONVERT with multiple COALESCE concatenations
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\+\s*\'\|\'\s*\+\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast(coalesce(cast({m.group(1)} as string), '{m.group(2)}') || '|' || coalesce(cast({m.group(3)} as string), '{m.group(4)}') as string)",
+         re.IGNORECASE),
+        
+        # Pattern 2: CONVERT with string concatenation and COALESCE
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*\'([^\']+)\'\s*\+\s*\'\|\'\s*\+\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast('{m.group(1)}' || '|' || coalesce(cast({m.group(2)} as string), '{m.group(3)}') as string)",
+         re.IGNORECASE),
+        
+        # Pattern 3: Simple CONVERT with nested COALESCE
+        (r'CONVERT\s*\(\s*VARCHAR\s*\(\d+\)\s*,\s*COALESCE\s*\(\s*CONVERT\s*\(\s*NVARCHAR\s*\(\d+\)\s*,\s*([^,)]+)\s*\)\s*,\s*\'([^\']+)\'\s*\)\s*\)',
+         lambda m: f"cast(coalesce(cast({m.group(1)} as string), '{m.group(2)}') as string)",
+         re.IGNORECASE),
+        
+        # Pattern 4: CONVERT binary
+        (r'convert\s*\(\s*binary\s*\(\s*(\d+)\s*\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(2)} as binary({m.group(1)}))",
+         re.IGNORECASE),
+        
+        # Pattern 5: CONVERT datetime2
+        (r'convert\s*\(\s*datetime2\s*\(\s*\d+\s*\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(1)} as timestamp)",
+         re.IGNORECASE),
+        
+        # Pattern 6: CAST as BIT
+        (r'cast\s*\(\s*(\d+)\s*as\s*bit\s*\)',
+         lambda m: f"cast({m.group(1)} as boolean)",
+         re.IGNORECASE),
+        
+        # Pattern 7: Generic CONVERT (catch-all)
+        (r'CONVERT\s*\(\s*(?:N?VARCHAR)\s*\([^)]+\)\s*,\s*([^)]+)\)',
+         lambda m: f"cast({m.group(1)} as string)",
+         re.IGNORECASE),
+    ]
+    
+    # Apply all patterns in order
+    for pattern, replacement, flags in patterns:
+        sql = re.sub(pattern, replacement, sql, flags=flags)
+    
+    # Handle type declarations last
+    type_conversions = [
+        # VARCHAR/NVARCHAR to string
+        (r'(?:n?varchar)\s*\(\s*(?:max|\d+)\s*\)', 'string'),
+        # TINYINT to INT
+        (r'\btinyint\b', 'int')
+    ]
+    
+    for pattern, replacement in type_conversions:
+        sql = re.sub(pattern, replacement, sql, flags=re.IGNORECASE)
+    
     return sql
 
 
@@ -217,14 +257,29 @@ def convert_numeric(sql):
     return sql
 
 def convert_hash_functions(sql):
+    # Update the hash function mapping
     hash_func_map = {
         'SHA2_256': 'sha2',
         'SHA2_512': 'sha512',
         'MD5': 'md5',
         'SHA1': 'sha1'
     }
-    regex = r'HASHBYTES\s*\(\s*\'([^\']+)\'\s*,\s*([^)]+)\)'
-    return re.sub(regex, lambda m: f'{hash_func_map[m.group(1).strip().upper()]}({m.group(2)})', sql, flags=re.IGNORECASE)
+    
+    # Handle HASHBYTES with CONVERT
+    pattern = r'CONVERT\s*\(\s*BINARY\s*\(\s*\d+\s*\)\s*,\s*HASHBYTES\s*\(\s*\'([^\']+)\'\s*,\s*([^)]+)\)\s*\)'
+    sql = re.sub(pattern, 
+                lambda m: f'CAST({hash_func_map[m.group(1).strip().upper()]}({m.group(2)}) AS BINARY)',
+                sql, 
+                flags=re.IGNORECASE)
+    
+    # Handle regular HASHBYTES
+    pattern = r'HASHBYTES\s*\(\s*\'([^\']+)\'\s*,\s*([^)]+)\)'
+    sql = re.sub(pattern, 
+                lambda m: f'{hash_func_map[m.group(1).strip().upper()]}({m.group(2)})',
+                sql, 
+                flags=re.IGNORECASE)
+    
+    return sql
 
 
 
@@ -350,6 +405,39 @@ def fix_column_aliases(content):
     
     return content
 
+def convert_brackets_and_quotes(sql):
+    # First convert square brackets to temporary marker
+    sql = re.sub(r'\[([^\]]+)\]', r'__TEMP_BRACKET__\1__TEMP_BRACKET__', sql)
+    
+    # Convert double quotes to temporary marker (but not within DBT tags)
+    in_dbt = False
+    result = ""
+    i = 0
+    
+    while i < len(sql):
+        if sql[i:i+2] == '{{':
+            in_dbt = True
+            result += sql[i:i+2]
+            i += 2
+        elif sql[i:i+2] == '}}':
+            in_dbt = False
+            result += sql[i:i+2]
+            i += 2
+        elif not in_dbt and sql[i] == '"':
+            result += '__TEMP_QUOTE__'
+            i += 1
+        else:
+            result += sql[i]
+            i += 1
+    
+    sql = result
+    
+    # Now convert all temporary markers to backticks
+    sql = sql.replace('__TEMP_BRACKET__', '`')
+    sql = sql.replace('__TEMP_QUOTE__', '`')
+    
+    return sql
+
 def convert_tsql_to_databricks(file_path, output_path):
     with open(file_path, 'r') as file:
         content = file.read()
@@ -369,6 +457,7 @@ def convert_tsql_to_databricks(file_path, output_path):
     # Apply transformations in correct order
     content = convert_concatenation(content)
     content = convert_equal_alias_to_as(content)
+    content = convert_brackets_and_quotes(content)
     content = move_alias_in_case_statements(content)
     content = fix_join_conditions(content)
     content = convert_window_functions(content)

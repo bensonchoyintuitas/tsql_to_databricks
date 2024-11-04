@@ -16,6 +16,11 @@ python3 convert_tsql_to_databricks.py input.sql output.sql
 # For a whole folder and subfolders (place models into folder named 'input') 
 python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
 ```
+```bash
+# To convert a whole folder and subfolders (place models into folder named 'output') 
+python lowercase_all.py  # uses default 'output' directory
+python lowercase_all.py custom_directory  # uses specified directory
+```
 
 # Areas for improvement:
 1. Apply SQL Linting to the output.
@@ -69,3 +74,4 @@ python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
                                    ELSE 9
                               END
      ```
+4. Challenges with complex nested CONVERT and CAST        , cast(coalesce(cast(`facility_code_conformed` as string),\'-1\') as string) as `bk_facility`
