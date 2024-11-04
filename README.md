@@ -74,3 +74,4 @@ python lowercase_all.py custom_directory  # uses specified directory
                                    ELSE 9
                               END
      ```
+4. Challenges with complex nested CONVERT and CAST        , cast(coalesce(cast(`facility_code_conformed` as string),\'-1\') as string) as `bk_facility`
