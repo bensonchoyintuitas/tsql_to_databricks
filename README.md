@@ -6,16 +6,34 @@ Converts TSQL dbt or sql models to ANSI SQL in style of databricks.
 - [@benson-choy](https://github.com/bensonchoyintuitas/tsql_to_databricks)
 - Master branch is protected. Create a branch and pull request to merge into master...
 
+# Getting started:
+1. Clone the repo
+2. Install the dependencies:
+in wsl/bash:
+```bash
+python -m venv .venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+alternatively in windows cmd:
+```cmd
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
+
+
 # To run:
+```bash
+# For a whole folder and subfolders (place models into folder named 'input') 
+python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
+```
 
 ```bash
 # For a single file
 python3 convert_tsql_to_databricks.py input.sql output.sql
 ```
-```bash
-# For a whole folder and subfolders (place models into folder named 'input') 
-python3 convert_folder_tsql_to_databricks_ansi.py ./input ./output
-```
+
 ```bash
 # To convert a whole folder and subfolders (place models into folder named 'output') 
 python lowercase_all.py  # uses default 'output' directory

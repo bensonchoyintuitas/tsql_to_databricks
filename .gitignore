@@ -2,3 +2,6 @@ input/*
 output/*
 scratch
 __pycache__
+.venv
+input.sql
+output.sql
